@@ -454,8 +454,8 @@ Remove-Item -Path "$ScratchDisk\scratchdir" -Recurse -Force | Out-Null
 Write-Output "Ejecting Iso drive"
 Get-Volume -DriveLetter $DriveLetter[0] | Get-DiskImage | Dismount-DiskImage
 Write-Output "Iso drive ejected"
-Write-Output "Removing autounattend.xml..."
-Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
+## Write-Output "Removing autounattend.xml..."
+## Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
 
 Write-Output "Cleanup check :"
 if (Test-Path -Path "$ScratchDisk\tiny11") {
@@ -480,17 +480,17 @@ if (Test-Path -Path "$ScratchDisk\scratchdir") {
 } else {
     Write-Output "scratchdir folder does not exist. No action needed."
 }
-if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
-    Write-Output "autounattend.xml still exists. Attempting to remove it again..."
-    Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
-    if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
-        Write-Output "Failed to remove autounattend.xml."
-    } else {
-        Write-Output "autounattend.xml removed successfully."
-    }
-} else {
-    Write-Output "autounattend.xml does not exist. No action needed."
-}
+## if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
+##     Write-Output "autounattend.xml still exists. Attempting to remove it again..."
+##     Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
+##     if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
+##         Write-Output "Failed to remove autounattend.xml."
+##     } else {
+##         Write-Output "autounattend.xml removed successfully."
+##     }
+## } else {
+##     Write-Output "autounattend.xml does not exist. No action needed."
+## }
 
 # Stop the transcript
 Stop-Transcript
