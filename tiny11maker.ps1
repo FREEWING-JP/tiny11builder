@@ -107,6 +107,38 @@ $Host.UI.RawUI.WindowTitle = "Tiny11 image creator"
 Clear-Host
 Write-Output "Welcome to the tiny11 image creator! Release: 09-07-25"
 
+## download required oscdimg.exe as first step #604
+## https://github.com/ntdevlabs/tiny11builder/pull/604
+# Download/check the oscdimg tool first, so the build doesn't fail after hours of work
+# if no internet is available at that moment.
+Write-Output "Checking for prerequisite oscdimg.exe..."
+$ADKDepTools = "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\$hostarchitecture\Oscdimg"
+$localOSCDIMGPath = "$PSScriptRoot\oscdimg.exe"
+
+if ([System.IO.Directory]::Exists($ADKDepTools)) {
+    Write-Output "Will be using oscdimg.exe from system ADK."
+    $OSCDIMG = "$ADKDepTools\oscdimg.exe"
+} else {
+    Write-Output "ADK folder not found. Creating/Using local copy of oscdimg.exe."
+    $url = "https://msdl.microsoft.com/download/symbols/oscdimg.exe/3D44737265000/oscdimg.exe"
+
+    if (-not (Test-Path -Path $localOSCDIMGPath)) {
+        Write-Output "Downloading oscdimg.exe..."
+        Invoke-WebRequest -Uri $url -OutFile $localOSCDIMGPath
+
+        if (Test-Path $localOSCDIMGPath) {
+            Write-Output "oscdimg.exe downloaded successfully."
+        } else {
+            Write-Error "Failed to download oscdimg.exe."
+            exit 1
+        }
+    } else {
+        Write-Output "oscdimg.exe already exists locally."
+    }
+
+    $OSCDIMG = $localOSCDIMGPath
+}
+
 $hostArchitecture = $Env:PROCESSOR_ARCHITECTURE
 New-Item -ItemType Directory -Force -Path "$ScratchDisk\tiny11\sources" | Out-Null
 do {
@@ -127,6 +159,7 @@ if ((Test-Path "$DriveLetter\sources\boot.wim") -eq $false -or (Test-Path "$Driv
     if ((Test-Path "$DriveLetter\sources\install.esd") -eq $true) {
         Write-Output "Found install.esd, converting to install.wim..."
         Get-WindowsImage -ImagePath $DriveLetter\sources\install.esd
+        [Console]::Beep(840, 100)
         $index = Read-Host "Please enter the image index"
         Write-Output ' '
         Write-Output 'Converting install.esd to install.wim. This may take a while...'
@@ -149,6 +182,7 @@ Write-Output "Getting image information:"
 $ImagesIndex = (Get-WindowsImage -ImagePath $ScratchDisk\tiny11\sources\install.wim).ImageIndex
 while ($ImagesIndex -notcontains $index) {
     Get-WindowsImage -ImagePath $ScratchDisk\tiny11\sources\install.wim
+    [Console]::Beep(840, 100)
     $index = Read-Host "Please enter the image index"
 }
 Write-Output "Mounting Windows image. This may take a while."
@@ -202,75 +236,33 @@ $packages = & 'dism' '/English' "/image:$($ScratchDisk)\scratchdir" '/Get-Provis
         }
     }
 
-$packagePrefixes = 'AppUp.IntelManagementandSecurityStatus',
-'Clipchamp.Clipchamp', 
-'DolbyLaboratories.DolbyAccess',
-'DolbyLaboratories.DolbyDigitalPlusDecoderOEM',
-'Microsoft.BingNews',
-'Microsoft.BingSearch',
-'Microsoft.BingWeather',
-'Microsoft.Copilot',
-'Microsoft.Windows.CrossDevice',
-'Microsoft.GamingApp',
-'Microsoft.GetHelp',
-'Microsoft.Getstarted',
-'Microsoft.Microsoft3DViewer',
-'Microsoft.MicrosoftOfficeHub',
-'Microsoft.MicrosoftSolitaireCollection',
-'Microsoft.MicrosoftStickyNotes',
-'Microsoft.MixedReality.Portal',
-'Microsoft.MSPaint',
-'Microsoft.Office.OneNote',
-'Microsoft.OfficePushNotificationUtility',
-'Microsoft.OutlookForWindows',
-'Microsoft.Paint',
-'Microsoft.People',
-'Microsoft.PowerAutomateDesktop',
-'Microsoft.SkypeApp',
-'Microsoft.StartExperiencesApp',
-'Microsoft.Todos',
-'Microsoft.Wallet',
-'Microsoft.Windows.DevHome',
-'Microsoft.Windows.Copilot',
-'Microsoft.Windows.Teams',
-'Microsoft.WindowsAlarms',
-'Microsoft.WindowsCamera',
-'microsoft.windowscommunicationsapps',
-'Microsoft.WindowsFeedbackHub',
-'Microsoft.WindowsMaps',
-'Microsoft.WindowsSoundRecorder',
-'Microsoft.WindowsTerminal',
-'Microsoft.Xbox.TCUI',
-'Microsoft.XboxApp',
-'Microsoft.XboxGameOverlay',
-'Microsoft.XboxGamingOverlay',
-'Microsoft.XboxIdentityProvider',
-'Microsoft.XboxSpeechToTextOverlay',
-'Microsoft.YourPhone',
-'Microsoft.ZuneMusic',
-'Microsoft.ZuneVideo',
-'MicrosoftCorporationII.MicrosoftFamily',
-'MicrosoftCorporationII.QuickAssist',
-'MSTeams',
-'MicrosoftTeams', 
-'Microsoft.WindowsTerminal',
-'Microsoft.549981C3F5F10'
+## Moved the removePackage.txt for easier maintenance #449
+## https://github.com/ntdevlabs/tiny11builder/pull/449
+# Path to the list of packages to remove
+$packageFile = "$PSScriptRoot\removePackage.txt"
+
+# Read all lines into an array
+$packagePrefixes = Get-Content -Path $packageFile
+
+# Remove blank lines or leading/trailing spaces
+$packagePrefixes = $packagePrefixes | Where-Object { $_.Trim() -ne "" } | ForEach-Object { $_.Trim() }
 
 $packagesToRemove = $packages | Where-Object {
     $packageName = $_
     $packagePrefixes -contains ($packagePrefixes | Where-Object { $packageName -like "*$_*" })
 }
 foreach ($package in $packagesToRemove) {
+    write-host "Removing $package :"
     & 'dism' '/English' "/image:$($ScratchDisk)\scratchdir" '/Remove-ProvisionedAppxPackage' "/PackageName:$package"
 }
 
-Write-Output "Removing Edge:"
-Remove-Item -Path "$ScratchDisk\scratchdir\Program Files (x86)\Microsoft\Edge" -Recurse -Force | Out-Null
-Remove-Item -Path "$ScratchDisk\scratchdir\Program Files (x86)\Microsoft\EdgeUpdate" -Recurse -Force | Out-Null
-Remove-Item -Path "$ScratchDisk\scratchdir\Program Files (x86)\Microsoft\EdgeCore" -Recurse -Force | Out-Null
-& 'takeown' '/f' "$ScratchDisk\scratchdir\Windows\System32\Microsoft-Edge-Webview" '/r' | Out-Null
-& 'icacls' "$ScratchDisk\scratchdir\Windows\System32\Microsoft-Edge-Webview" '/grant' "$($adminGroup.Value):(F)" '/T' '/C' | Out-Null
-Remove-Item -Path "$ScratchDisk\scratchdir\Windows\System32\Microsoft-Edge-Webview" -Recurse -Force | Out-Null
+## Write-Output "Removing Edge:"
+## Remove-Item -Path "$ScratchDisk\scratchdir\Program Files (x86)\Microsoft\Edge" -Recurse -Force | Out-Null
+## Remove-Item -Path "$ScratchDisk\scratchdir\Program Files (x86)\Microsoft\EdgeUpdate" -Recurse -Force | Out-Null
+## Remove-Item -Path "$ScratchDisk\scratchdir\Program Files (x86)\Microsoft\EdgeCore" -Recurse -Force | Out-Null
+## & 'takeown' '/f' "$ScratchDisk\scratchdir\Windows\System32\Microsoft-Edge-Webview" '/r' | Out-Null
+## & 'icacls' "$ScratchDisk\scratchdir\Windows\System32\Microsoft-Edge-Webview" '/grant' "$($adminGroup.Value):(F)" '/T' '/C' | Out-Null
+## Remove-Item -Path "$ScratchDisk\scratchdir\Windows\System32\Microsoft-Edge-Webview" -Recurse -Force | Out-Null
 Write-Output "Removing OneDrive:"
 & 'takeown' '/f' "$ScratchDisk\scratchdir\Windows\System32\OneDriveSetup.exe" | Out-Null
 & 'icacls' "$ScratchDisk\scratchdir\Windows\System32\OneDriveSetup.exe" '/grant' "$($adminGroup.Value):(F)" '/T' '/C' | Out-Null
@@ -330,11 +322,17 @@ Set-RegistryValue 'HKLM\zSYSTEM\ControlSet001\Control\BitLocker' 'PreventDeviceE
 Write-Output "Disabling Chat icon:"
 Set-RegistryValue 'HKLM\zSOFTWARE\Policies\Microsoft\Windows\Windows Chat' 'ChatIcon' 'REG_DWORD' '3'
 Set-RegistryValue 'HKLM\zNTUSER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'TaskbarMn' 'REG_DWORD' '0'
-Write-Output "Removing Edge related registries"
-Remove-RegistryValue "HKEY_LOCAL_MACHINE\zSOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge"
-Remove-RegistryValue "HKEY_LOCAL_MACHINE\zSOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update"
+## Write-Output "Removing Edge related registries"
+## Remove-RegistryValue "HKEY_LOCAL_MACHINE\zSOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge"
+## Remove-RegistryValue "HKEY_LOCAL_MACHINE\zSOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update"
 Write-Output "Disabling OneDrive folder backup"
 Set-RegistryValue "HKLM\zSOFTWARE\Policies\Microsoft\Windows\OneDrive" "DisableFileSyncNGSC" "REG_DWORD" "1"
+
+## Add ability to disable search highlights #512
+## https://github.com/ntdevlabs/tiny11builder/pull/512
+Write-Output "Disabling Search Highlights:"
+Set-RegistryValue 'HKLM\zSoftware\Microsoft\Windows\CurrentVersion\SearchSettings' 'IsDynamicSearchBoxEnabled' 'REG_DWORD' '0'
+
 Write-Output "Disabling Telemetry:"
 Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' 'Enabled' 'REG_DWORD' '0'
 Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\Windows\CurrentVersion\Privacy' 'TailoredExperiencesWithDiagnosticDataEnabled' 'REG_DWORD' '0'
@@ -346,6 +344,13 @@ Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\InputPersonalization\TrainedD
 Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\Personalization\Settings' 'AcceptedPrivacyPolicy' 'REG_DWORD' '0'
 Set-RegistryValue 'HKLM\zSOFTWARE\Policies\Microsoft\Windows\DataCollection' 'AllowTelemetry' 'REG_DWORD' '0'
 Set-RegistryValue 'HKLM\zSYSTEM\ControlSet001\Services\dmwappushservice' 'Start' 'REG_DWORD' '4'
+
+## Disable Windows Spotlight and tips on lockscreen #273
+## https://github.com/ntdevlabs/tiny11builder/pull/273
+Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' 'RotatingLockScreenEnabled' 'REG_DWORD' '0'
+Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' 'RotatingLockScreenOverlayEnabled' 'REG_DWORD' '0'
+Set-RegistryValue 'HKLM\zNTUSER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' 'SubscribedContent-338387Enabled' 'REG_DWORD' '0'
+
 ## Prevents installation of DevHome and Outlook
 Write-Output "Prevents installation of DevHome and Outlook:"
 Set-RegistryValue 'HKLM\zSOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler_Oobe\OutlookUpdate' 'workCompleted' 'REG_DWORD' '1'
@@ -439,37 +444,12 @@ Write-Output "The tiny11 image is now completed. Proceeding with the making of t
 Write-Output "Copying unattended file for bypassing MS account on OOBE..."
 Copy-Item -Path "$PSScriptRoot\autounattend.xml" -Destination "$ScratchDisk\tiny11\autounattend.xml" -Force | Out-Null
 Write-Output "Creating ISO image..."
-$ADKDepTools = "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\$hostarchitecture\Oscdimg"
-$localOSCDIMGPath = "$PSScriptRoot\oscdimg.exe"
-
-if ([System.IO.Directory]::Exists($ADKDepTools)) {
-    Write-Output "Will be using oscdimg.exe from system ADK."
-    $OSCDIMG = "$ADKDepTools\oscdimg.exe"
-} else {
-    Write-Output "ADK folder not found. Will be using bundled oscdimg.exe."
-    $url = "https://msdl.microsoft.com/download/symbols/oscdimg.exe/3D44737265000/oscdimg.exe"
-
-    if (-not (Test-Path -Path $localOSCDIMGPath)) {
-        Write-Output "Downloading oscdimg.exe..."
-        Invoke-WebRequest -Uri $url -OutFile $localOSCDIMGPath
-
-        if (Test-Path $localOSCDIMGPath) {
-            Write-Output "oscdimg.exe downloaded successfully."
-        } else {
-            Write-Error "Failed to download oscdimg.exe."
-            exit 1
-        }
-    } else {
-        Write-Output "oscdimg.exe already exists locally."
-    }
-
-    $OSCDIMG = $localOSCDIMGPath
-}
 
 & "$OSCDIMG" '-m' '-o' '-u2' '-udfver102' "-bootdata:2#p0,e,b$ScratchDisk\tiny11\boot\etfsboot.com#pEF,e,b$ScratchDisk\tiny11\efi\microsoft\boot\efisys.bin" "$ScratchDisk\tiny11" "$PSScriptRoot\tiny11.iso"
 
 # Finishing up
 Write-Output "Creation completed! Press any key to exit the script..."
+[Console]::Beep(840, 100)
 Read-Host "Press Enter to continue"
 Write-Output "Performing Cleanup..."
 Remove-Item -Path "$ScratchDisk\tiny11" -Recurse -Force | Out-Null
@@ -477,10 +457,8 @@ Remove-Item -Path "$ScratchDisk\scratchdir" -Recurse -Force | Out-Null
 Write-Output "Ejecting Iso drive"
 Get-Volume -DriveLetter $DriveLetter[0] | Get-DiskImage | Dismount-DiskImage
 Write-Output "Iso drive ejected"
-Write-Output "Removing oscdimg.exe..."
-Remove-Item -Path "$PSScriptRoot\oscdimg.exe" -Force -ErrorAction SilentlyContinue
-Write-Output "Removing autounattend.xml..."
-Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
+## Write-Output "Removing autounattend.xml..."
+## Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
 
 Write-Output "Cleanup check :"
 if (Test-Path -Path "$ScratchDisk\tiny11") {
@@ -505,28 +483,17 @@ if (Test-Path -Path "$ScratchDisk\scratchdir") {
 } else {
     Write-Output "scratchdir folder does not exist. No action needed."
 }
-if (Test-Path -Path "$PSScriptRoot\oscdimg.exe") {
-    Write-Output "oscdimg.exe still exists. Attempting to remove it again..."
-    Remove-Item -Path "$PSScriptRoot\oscdimg.exe" -Force -ErrorAction SilentlyContinue
-    if (Test-Path -Path "$PSScriptRoot\oscdimg.exe") {
-        Write-Output "Failed to remove oscdimg.exe."
-    } else {
-        Write-Output "oscdimg.exe removed successfully."
-    }
-} else {
-    Write-Output "oscdimg.exe does not exist. No action needed."
-}
-if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
-    Write-Output "autounattend.xml still exists. Attempting to remove it again..."
-    Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
-    if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
-        Write-Output "Failed to remove autounattend.xml."
-    } else {
-        Write-Output "autounattend.xml removed successfully."
-    }
-} else {
-    Write-Output "autounattend.xml does not exist. No action needed."
-}
+## if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
+##     Write-Output "autounattend.xml still exists. Attempting to remove it again..."
+##     Remove-Item -Path "$PSScriptRoot\autounattend.xml" -Force -ErrorAction SilentlyContinue
+##     if (Test-Path -Path "$PSScriptRoot\autounattend.xml") {
+##         Write-Output "Failed to remove autounattend.xml."
+##     } else {
+##         Write-Output "autounattend.xml removed successfully."
+##     }
+## } else {
+##     Write-Output "autounattend.xml does not exist. No action needed."
+## }
 
 # Stop the transcript
 Stop-Transcript
