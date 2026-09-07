@@ -159,6 +159,7 @@ if ((Test-Path "$DriveLetter\sources\boot.wim") -eq $false -or (Test-Path "$Driv
     if ((Test-Path "$DriveLetter\sources\install.esd") -eq $true) {
         Write-Output "Found install.esd, converting to install.wim..."
         Get-WindowsImage -ImagePath $DriveLetter\sources\install.esd
+        [Console]::Beep(840, 100)
         $index = Read-Host "Please enter the image index"
         Write-Output ' '
         Write-Output 'Converting install.esd to install.wim. This may take a while...'
@@ -181,6 +182,7 @@ Write-Output "Getting image information:"
 $ImagesIndex = (Get-WindowsImage -ImagePath $ScratchDisk\tiny11\sources\install.wim).ImageIndex
 while ($ImagesIndex -notcontains $index) {
     Get-WindowsImage -ImagePath $ScratchDisk\tiny11\sources\install.wim
+    [Console]::Beep(840, 100)
     $index = Read-Host "Please enter the image index"
 }
 Write-Output "Mounting Windows image. This may take a while."
@@ -447,6 +449,7 @@ Write-Output "Creating ISO image..."
 
 # Finishing up
 Write-Output "Creation completed! Press any key to exit the script..."
+[Console]::Beep(840, 100)
 Read-Host "Press Enter to continue"
 Write-Output "Performing Cleanup..."
 Remove-Item -Path "$ScratchDisk\tiny11" -Recurse -Force | Out-Null
